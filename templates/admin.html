@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Panel</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+    <h2>Teacher Dashboard</h2>
+
+    <button onclick="pick()">🎯 Pick Student</button>
+    <button onclick="reset()">🔄 Reset</button>
+
+    <h3 id="selected"></h3>
+
+    <h3>Selection Report</h3>
+    <ul id="report"></ul>
+
+    <script>
+        function pick() {
+            fetch("/pick_student")
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById("selected").innerText =
+                    data.selected || data.message;
+                loadReport();
+            });
+        }
+
+        function loadReport() {
+            fetch("/report")
+            .then(res => res.json())
+            .then(data => {
+                const list = document.getElementById("report");
+                list.innerHTML = "";
+                data.forEach(item => {
+                    const li = document.createElement("li");
+                    li.innerText = item.name + " - " + item.time;
+                    list.appendChild(li);
+                });
+            });
+        }
+
+        function reset() {
+            fetch("/reset", {method: "POST"})
+            .then(() => {
+                document.getElementById("selected").innerText = "";
+                document.getElementById("report").innerHTML = "";
+            });
+        }
+
+        loadReport();
+    </script>
+</body>
+</html>

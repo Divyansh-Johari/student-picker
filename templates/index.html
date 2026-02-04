@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Student Entry</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+    <h2>Enter Your Name</h2>
+
+    <input id="name" placeholder="Your name" />
+    <button onclick="submitName()">Submit</button>
+
+    <p id="msg"></p>
+
+    <script>
+        function submitName() {
+            const name = document.getElementById("name").value;
+
+            fetch("/add_student", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({name})
+            })
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById("msg").innerText =
+                    data.message || data.error;
+            });
+        }
+    </script>
+</body>
+</html>
