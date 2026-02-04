@@ -15,7 +15,7 @@ def init_db():
     conn = get_db()
     cur = conn.cursor()
 
-    # Enable WAL for concurrency
+    # Enable WAL mode for better concurrency
     cur.execute("PRAGMA journal_mode=WAL;")
 
     cur.execute("""
@@ -40,6 +40,7 @@ def init_db():
 init_db()
 
 # ---------------- ROUTES ----------------
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -48,12 +49,13 @@ def index():
 def admin():
     return render_template("admin.html")
 
+# ---- Student Registration ----
 @app.route("/add_student", methods=["POST"])
 def add_student():
     name = request.json.get("name", "").strip()
 
     if not name:
-        return jsonify({"error": "Name required"}), 400
+        return jsonify({"error": "Name is required"}), 400
 
     try:
         conn = get_db()
@@ -67,6 +69,7 @@ def add_student():
     except sqlite3.IntegrityError:
         return jsonify({"error": "Name already registered"}), 400
 
+# ---- Pick Random Student ----
 @app.route("/pick_student")
 def pick_student():
     conn = get_db()
@@ -76,7 +79,7 @@ def pick_student():
 
     if not students:
         conn.close()
-        return jsonify({"message": "All students selected"})
+        return jsonify({"message": "All students have been selected"})
 
     chosen = random.choice(students)
 
@@ -94,6 +97,24 @@ def pick_student():
 
     return jsonify({"selected": chosen["name"]})
 
+# ---- Live Student List (Admin) ----
+@app.route("/students")
+def students():
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT name, is_selected FROM students ORDER BY name"
+    ).fetchall()
+    conn.close()
+
+    return jsonify([
+        {
+            "name": row["name"],
+            "is_selected": bool(row["is_selected"])
+        }
+        for row in rows
+    ])
+
+# ---- Selection Report ----
 @app.route("/report")
 def report():
     conn = get_db()
@@ -103,15 +124,24 @@ def report():
     conn.close()
 
     return jsonify([
-        {"name": r["name"], "time": r["selected_at"]}
-        for r in rows
+        {
+            "name": row["name"],
+            "time": row["selected_at"]
+        }
+        for row in rows
     ])
 
+# ---- Reset Session ----
 @app.route("/reset", methods=["POST"])
 def reset():
     conn = get_db()
-    conn.execute("UPDATE students SET is_selected = 0")
+    conn.execute("DELETE FROM students")
     conn.execute("DELETE FROM selection_log")
     conn.commit()
     conn.close()
-    return jsonify({"message": "Session reset"})
+
+    return jsonify({"message": "New session started"})
+
+# ---------------- RUN ----------------
+if __name__ == "__main__":
+    app.run()
