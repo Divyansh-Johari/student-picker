@@ -3,52 +3,90 @@
 <head>
     <title>Admin Panel</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .selected { color: red; }
+        .not-selected { color: green; }
+    </style>
 </head>
 <body>
-    <h2>Teacher Dashboard</h2>
 
-    <button onclick="pick()">🎯 Pick Student</button>
-    <button onclick="reset()">🔄 Reset</button>
+<h2>👨‍🏫 Teacher Dashboard</h2>
 
-    <h3 id="selected"></h3>
+<button onclick="pick()">🎯 Pick Student</button>
+<button onclick="resetSession()">🔄 Start New Session</button>
 
-    <h3>Selection Report</h3>
-    <ul id="report"></ul>
+<h3 id="selected"></h3>
 
-    <script>
-        function pick() {
-            fetch("/pick_student")
-            .then(res => res.json())
-            .then(data => {
-                document.getElementById("selected").innerText =
-                    data.selected || data.message;
-                loadReport();
+<hr>
+
+<h3>📋 Registered Students (Live)</h3>
+<ul id="students"></ul>
+
+<hr>
+
+<h3>🧾 Selection Report</h3>
+<ul id="report"></ul>
+
+<script>
+    function pick() {
+        fetch("/pick_student")
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById("selected").innerText =
+                data.selected || data.message;
+            loadAll();
+        });
+    }
+
+    function loadStudents() {
+        fetch("/students")
+        .then(res => res.json())
+        .then(data => {
+            const list = document.getElementById("students");
+            list.innerHTML = "";
+
+            data.forEach(s => {
+                const li = document.createElement("li");
+                li.innerText = s.name + (s.is_selected ? " (Selected)" : "");
+                li.className = s.is_selected ? "selected" : "not-selected";
+                list.appendChild(li);
             });
-        }
+        });
+    }
 
-        function loadReport() {
-            fetch("/report")
-            .then(res => res.json())
-            .then(data => {
-                const list = document.getElementById("report");
-                list.innerHTML = "";
-                data.forEach(item => {
-                    const li = document.createElement("li");
-                    li.innerText = item.name + " - " + item.time;
-                    list.appendChild(li);
-                });
+    function loadReport() {
+        fetch("/report")
+        .then(res => res.json())
+        .then(data => {
+            const list = document.getElementById("report");
+            list.innerHTML = "";
+            data.forEach(item => {
+                const li = document.createElement("li");
+                li.innerText = item.name + " - " + item.time;
+                list.appendChild(li);
             });
-        }
+        });
+    }
 
-        function reset() {
-            fetch("/reset", {method: "POST"})
-            .then(() => {
-                document.getElementById("selected").innerText = "";
-                document.getElementById("report").innerHTML = "";
-            });
-        }
+    function resetSession() {
+        if (!confirm("Start a new session? All data will be deleted.")) return;
 
+        fetch("/reset", { method: "POST" })
+        .then(() => loadAll());
+    }
+
+    function loadAll() {
+        loadStudents();
         loadReport();
-    </script>
+    }
+
+    // 🔁 Auto-refresh every 3 seconds
+    setInterval(loadStudents, 3000);
+
+    loadAll();
+</script>
+
 </body>
 </html>
