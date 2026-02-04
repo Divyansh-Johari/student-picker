@@ -1,38 +1,40 @@
-import os
+import sqlite3
 import random
-import psycopg2
 from flask import Flask, request, jsonify, render_template
 
 app = Flask(__name__)
-
-DATABASE_URL = os.environ.get("DATABASE_URL")
+DB_NAME = "students.db"
 
 # ---------------- DATABASE ----------------
 def get_db():
-    return psycopg2.connect(DATABASE_URL, sslmode="require")
+    conn = sqlite3.connect(DB_NAME, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 def init_db():
     conn = get_db()
     cur = conn.cursor()
 
+    # Enable WAL for concurrency
+    cur.execute("PRAGMA journal_mode=WAL;")
+
     cur.execute("""
         CREATE TABLE IF NOT EXISTS students (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT UNIQUE NOT NULL,
-            is_selected BOOLEAN DEFAULT FALSE
+            is_selected INTEGER DEFAULT 0
         )
     """)
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS selection_log (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
-            selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            selected_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
 
     conn.commit()
-    cur.close()
     conn.close()
 
 init_db()
@@ -48,87 +50,68 @@ def admin():
 
 @app.route("/add_student", methods=["POST"])
 def add_student():
-    data = request.get_json()
-    name = data.get("name", "").strip()
+    name = request.json.get("name", "").strip()
 
     if not name:
-        return jsonify({"error": "Name is required"}), 400
+        return jsonify({"error": "Name required"}), 400
 
     try:
         conn = get_db()
-        cur = conn.cursor()
-        cur.execute("INSERT INTO students (name) VALUES (%s)", (name,))
+        conn.execute(
+            "INSERT INTO students (name) VALUES (?)",
+            (name,)
+        )
         conn.commit()
-        cur.close()
         conn.close()
         return jsonify({"message": "Registered successfully"})
-    except psycopg2.errors.UniqueViolation:
+    except sqlite3.IntegrityError:
         return jsonify({"error": "Name already registered"}), 400
-    except Exception:
-        return jsonify({"error": "Server error"}), 500
 
-@app.route("/pick_student", methods=["GET"])
+@app.route("/pick_student")
 def pick_student():
     conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute("SELECT id, name FROM students WHERE is_selected = FALSE")
-    students = cur.fetchall()
+    students = conn.execute(
+        "SELECT id, name FROM students WHERE is_selected = 0"
+    ).fetchall()
 
     if not students:
-        return jsonify({"message": "All students already selected"})
+        conn.close()
+        return jsonify({"message": "All students selected"})
 
     chosen = random.choice(students)
 
-    cur.execute(
-        "UPDATE students SET is_selected = TRUE WHERE id = %s",
-        (chosen[0],)
+    conn.execute(
+        "UPDATE students SET is_selected = 1 WHERE id = ?",
+        (chosen["id"],)
     )
-    cur.execute(
-        "INSERT INTO selection_log (name) VALUES (%s)",
-        (chosen[1],)
+    conn.execute(
+        "INSERT INTO selection_log (name) VALUES (?)",
+        (chosen["name"],)
     )
 
     conn.commit()
-    cur.close()
     conn.close()
 
-    return jsonify({"selected": chosen[1]})
+    return jsonify({"selected": chosen["name"]})
 
-@app.route("/report", methods=["GET"])
+@app.route("/report")
 def report():
     conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT name, selected_at
-        FROM selection_log
-        ORDER BY selected_at
-    """)
-    rows = cur.fetchall()
-
-    cur.close()
+    rows = conn.execute(
+        "SELECT name, selected_at FROM selection_log ORDER BY selected_at"
+    ).fetchall()
     conn.close()
 
     return jsonify([
-        {"name": r[0], "time": r[1].strftime("%Y-%m-%d %H:%M:%S")}
+        {"name": r["name"], "time": r["selected_at"]}
         for r in rows
     ])
 
 @app.route("/reset", methods=["POST"])
 def reset():
     conn = get_db()
-    cur = conn.cursor()
-
-    cur.execute("UPDATE students SET is_selected = FALSE")
-    cur.execute("DELETE FROM selection_log")
-
+    conn.execute("UPDATE students SET is_selected = 0")
+    conn.execute("DELETE FROM selection_log")
     conn.commit()
-    cur.close()
     conn.close()
-
-    return jsonify({"message": "Session reset successfully"})
-
-# ---------------- ENTRY ----------------
-if __name__ == "__main__":
-    app.run()
+    return jsonify({"message": "Session reset"})
